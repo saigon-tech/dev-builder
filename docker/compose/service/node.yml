@@ -1,0 +1,14 @@
+  node:
+    container_name: '__APP_NAME__-node'
+    build: './docker/node'
+    ports:
+      - 80:3000
+    tty: true
+    volumes:
+      - ./server/:/srv:rw
+      - ./server/node_modules:/srv/node_modules:delegated
+    working_dir: /srv
+    environment:
+      HOST: 0.0.0.0
+#      TZ: 'Asia/Tokyo'
+    command: bash -c '__NODE_COMMAND__'

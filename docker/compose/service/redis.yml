@@ -1,0 +1,9 @@
+
+  redis:
+    container_name: '__APP_NAME__-redis'
+    image: redis:3
+    ports:
+      - 6379:6379
+    command: redis-server --appendonly yes
+    volumes:
+      - ./docker/redis/data:/data:delegated

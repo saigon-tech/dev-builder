@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
+RESET="\033[0m"
+YELLOW="\033[38;5;11m"
+GREEN="\033[0;32m"
+LIGHT_CYAN="\033[1;36m"
+
+input() {
+  MSG=$1
+  read -p "$(echo -e ${YELLOW}${MSG}${RESET}) " INPUT_VARIABLE
+  echo $INPUT_VARIABLE
+}
+confirm() {
+  MSG=$1
+  EXIT_ON_NO=$2
+  read -p $'\e[31m'"$MSG"$'\e[0m: ' CONFIRM
+  if [[ $CONFIRM != [yY] && $CONFIRM != [yY][eE][sS] && ! -z "$EXIT_ON_NO" ]]; then
+    exit 1
+  fi
+  echo $CONFIRM
+}
+choose() {
+  options=("$@")
+  select choice in "${options[@]}"; do
+    echo $choice
+    break
+  done
+}
+
+printf "${LIGHT_CYAN}Welcome to development environment builder of SGT!${RESET}\n"
+appName=$(input 'Enter app name:')
+sourcePath=$(input 'Enter source path:')
+
+if [[ $appName == "" ]]; then
+  appName="sgt"
+fi
+if [[ $sourcePath == "" ]]; then
+  sourcePath="${appName}"
+fi
+if [[ -d "${sourcePath}" ]]; then
+  confirm "Directory [${sourcePath}] exists. Overwrite it? (Y/N)" 'exit' > /dev/null
+  rm -rf "${sourcePath}"
+fi
+
+mkdir -p "${sourcePath}"
+mkdir -p "${sourcePath}/docker"
+
+services=()
+confirm=$(confirm 'Are you want to use database? (Y/N)')
+if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
+  services+=('db')
+fi
+
+confirm=$(confirm 'Are you want to use redis? (Y/N)')
+if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
+  services+=('redis')
+fi
+
+echo 'Please choose framework for your project:'
+backends=("Laravel" "NuxtJS" "ExpressJS")
+backend=$(choose "${backends[@]}")
+
+nodeCommand=''
+case $backend in
+"Laravel")
+  git clone https://github.com/laravel/laravel.git "${sourcePath}/server"
+  services+=('php')
+  ;;
+"NuxtJS")
+  npm init nuxt-app "${sourcePath}/server"
+  nodeCommand='yarn install \&\& yarn run dev'
+  services+=('node')
+  ;;
+"ExpressJS")
+  echo 'Choose view engine:'
+  views=('no-view' 'ejs' 'jade' 'pug' 'twig' 'hbs' 'hjs' 'dust' 'vash')
+  view=$(choose "${views[@]}")
+  viewOption=''
+  if [[ $view != 'no-view' ]]; then
+    viewOption="--view=${view}"
+  fi
+
+  echo 'Choose css engine:'
+  cssEngines=('no-engine' 'sass' 'less' 'compass' 'stylus')
+  cssEngine=$(choose "${cssEngines[@]}")
+  cssOption=''
+  if [[ $cssEngine != 'no-engine' ]]; then
+    cssOption="--css=${cssEngine}"
+  fi
+
+  npm install -g express-generator
+  express "${viewOption}" "${cssOption}" "${sourcePath}/server"
+  nodeCommand='yarn install \&\& yarn start'
+  services+=('node')
+  ;;
+esac
+
+dockerComposeFileContents=('docker/compose/docker-compose.yml')
+for service in "${services[@]}"; do
+  dockerComposeFileContents+=("docker/compose/service/${service}.yml")
+
+  case $service in
+  'php')
+    cp -r ./docker/build/nginx "${sourcePath}/docker/"
+    cp -r ./docker/build/php-fpm "${sourcePath}/docker/"
+    ;;
+  *)
+    cp -r "./docker/build/${service}" "${sourcePath}/docker/"
+    ;;
+  esac
+done
+
+dockerComposeFile="${sourcePath}/docker-compose.yml"
+cat "${dockerComposeFileContents[@]}" >"${dockerComposeFile}"
+sed -i '' -e "s/__APP_NAME__/${appName}/g" "${dockerComposeFile}"
+sed -i '' -e "s/__NODE_COMMAND__/${nodeCommand}/g" "${dockerComposeFile}"
+
+cp "./docker/compose/up.sh" "${sourcePath}/up.sh"
+cp "./docker/compose/down.sh" "${sourcePath}/down.sh"
+chmod +x "${sourcePath}/up.sh"
+chmod +x "${sourcePath}/down.sh"
