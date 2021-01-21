@@ -1,3 +1,4 @@
+
   server:
     container_name: '__APP_NAME__-server'
     image: nginx
